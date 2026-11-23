@@ -231,6 +231,18 @@ buildSideSeats(1)
 buildEndSeats(-1)
 buildEndSeats(1)
 
+-- Inner pitch barrier: this separates the playable grass from the stands. It leaves
+-- room for both goal nets, while keeping players on the pitch instead of in the seating.
+local innerBarrierColor = Color3.fromRGB(200, 239, 255)
+local innerBarrierHeight = 14
+local innerBarrierY = innerBarrierHeight / 2
+local innerHalfX = HALF_LENGTH + 11
+local innerHalfZ = HALF_WIDTH + 3
+createPart("InnerWestBarrier", Vector3.new(1.2, innerBarrierHeight, innerHalfZ * 2), CFrame.new(-innerHalfX, innerBarrierY, 0), innerBarrierColor, Enum.Material.Glass, true, 0.58)
+createPart("InnerEastBarrier", Vector3.new(1.2, innerBarrierHeight, innerHalfZ * 2), CFrame.new(innerHalfX, innerBarrierY, 0), innerBarrierColor, Enum.Material.Glass, true, 0.58)
+createPart("InnerNorthBarrier", Vector3.new(innerHalfX * 2, innerBarrierHeight, 1.2), CFrame.new(0, innerBarrierY, -innerHalfZ), innerBarrierColor, Enum.Material.Glass, true, 0.58)
+createPart("InnerSouthBarrier", Vector3.new(innerHalfX * 2, innerBarrierHeight, 1.2), CFrame.new(0, innerBarrierY, innerHalfZ), innerBarrierColor, Enum.Material.Glass, true, 0.58)
+
 -- A tall transparent barrier completely encloses the pitch and seating area.
 -- It is collidable on every side, so players cannot walk or jump out of the map.
 local barrierColor = Color3.fromRGB(111, 221, 255)
@@ -242,6 +254,34 @@ createPart("WestBarrier", Vector3.new(2, barrierHeight, barrierHalfZ * 2), CFram
 createPart("EastBarrier", Vector3.new(2, barrierHeight, barrierHalfZ * 2), CFrame.new(barrierHalfX, barrierY, 0), barrierColor, Enum.Material.Glass, true, 0.48)
 createPart("NorthBarrier", Vector3.new(barrierHalfX * 2, barrierHeight, 2), CFrame.new(0, barrierY, -barrierHalfZ), barrierColor, Enum.Material.Glass, true, 0.48)
 createPart("SouthBarrier", Vector3.new(barrierHalfX * 2, barrierHeight, 2), CFrame.new(0, barrierY, barrierHalfZ), barrierColor, Enum.Material.Glass, true, 0.48)
+
+-- A real physics football sits at midfield and can be pushed around by players.
+local ball = Instance.new("Part")
+ball.Name = "Football"
+ball.Shape = Enum.PartType.Ball
+ball.Size = Vector3.new(4, 4, 4)
+ball.Position = Vector3.new(0, 3.2, 0)
+ball.Anchored = false
+ball.CanCollide = true
+ball.CanTouch = true
+ball.CanQuery = true
+ball.CastShadow = true
+ball.Color = Color3.fromRGB(248, 248, 242)
+ball.Material = Enum.Material.SmoothPlastic
+ball.CustomPhysicalProperties = PhysicalProperties.new(0.7, 0.38, 0.52, 1, 1)
+ball.Parent = stadium
+
+local ballGlow = Instance.new("Highlight")
+ballGlow.Name = "BallOutline"
+ballGlow.Adornee = ball
+ballGlow.FillTransparency = 1
+ballGlow.OutlineColor = Color3.fromRGB(34, 40, 52)
+ballGlow.OutlineTransparency = 0.2
+ballGlow.Parent = ball
+
+pcall(function()
+	ball:SetNetworkOwner(nil)
+end)
 
 -- Invisible spawn surface at midfield; players always appear on the pitch.
 local spawn = Instance.new("SpawnLocation")

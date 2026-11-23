@@ -28,10 +28,11 @@ Move within **10 studs** of the ball to play it. The server owns the ball and va
    Leave this command running while you work. Rojo will print a local server address, normally `http://localhost:34872`.
 3. Open your existing place (`MyRobloxGame.rbxl`) in Roblox Studio, or open a new Baseplate place.
 4. In Studio, use **Plugins → Rojo → Connect** and select the running Rojo server. Confirm the sync prompt.
-5. Press **Play**. The `FootballStadium` map, goal scoring, ball, HUD, and controls are created by the synced server/client scripts when the session starts.
-6. Use **File → Publish to Roblox As…** (or **Publish to Roblox**) once you are happy with the game.
+5. The football field should now be visible in **Edit** mode under `Workspace → FootballStudioPreview`. If it is not there, disconnect/reconnect the Rojo plugin (or use its **Sync In** command) and make sure you started `rojo serve` from this repository root.
+6. Press **Play**. The preview is replaced with the full `FootballStadium` map, goal scoring, ball, HUD, and controls created by the synced server/client scripts.
+7. Use **File → Publish to Roblox As…** (or **Publish to Roblox**) once you are happy with the game.
 
-> Keep `rojo serve` open when editing the `.luau` files. Saving a source file syncs it to Studio automatically; stop and start Play mode again to recreate the stadium from the updated script.
+> Keep `rojo serve` open when editing the `.luau` files. Saving a source file syncs it to Studio automatically; stop and start Play mode again to recreate the full runtime stadium from the updated script.
 
 ### Build a standalone Studio place
 

@@ -272,6 +272,13 @@ for index, position in ipairs(spawnPositions) do
 	spawn.Parent = spawns
 end
 
+-- The project file contains a light editor-only field preview. Remove it as Play starts,
+-- after this script has finished building the full runtime stadium above.
+local studioPreview = Workspace:FindFirstChild("FootballStudioPreview")
+if studioPreview then
+	studioPreview:Destroy()
+end
+
 -- Physical ball. It is server-owned so each kick has the same outcome for every player.
 local ball = create("Part", {
 	Name = "FootballBall",

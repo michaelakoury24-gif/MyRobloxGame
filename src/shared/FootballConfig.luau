@@ -8,7 +8,6 @@ local Config = {
 		DribbleDistance = 2.75,
 		DribbleHeightOffset = -1.48,
 		DribbleResponsiveness = 34,
-		DribbleMaxForce = 26000,
 		FreeFriction = 0.985,
 		MaxFreeSpeed = 105,
 		ResetDelay = 1.2,

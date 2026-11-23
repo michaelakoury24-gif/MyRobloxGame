@@ -12,7 +12,7 @@ A Rojo-powered football stadium with a multiplayer-authoritative ball system. Th
 
 - Small black-and-white football with procedural dark panels inspired by the supplied classic football reference
 - Server-owned possession: touch a free ball to gain possession
-- Smooth non-welded dribbling uses a responsive position constraint and ground raycast, keeping the ball at foot height while moving and turning
+- Smooth non-welded dribbling uses eased server movement and a ground raycast, keeping the ball at foot height while moving and turning
 - Hold **left click** or **F** to charge and release a shot; longer holds hit harder and lift higher
 - **Q** sends a quick ground pass in the aim direction
 - **E** performs a short, low slide tackle with a server cooldown; tackle an opponent within range to win the ball

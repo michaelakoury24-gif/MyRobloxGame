@@ -273,7 +273,7 @@ createPart("NorthBarrier", Vector3.new(barrierHalfX * 2, barrierHeight, 2), CFra
 createPart("SouthBarrier", Vector3.new(barrierHalfX * 2, barrierHeight, 2), CFrame.new(0, barrierY, barrierHalfZ), barrierColor, Enum.Material.Glass, true, 0.48)
 
 -- A compact black-and-white football. It uses free physics when unclaimed and a
--- responsive, non-welded AlignPosition dribble while under a player's possession.
+-- responsive, non-welded eased dribble while under a player's possession.
 local BALL_START = CFrame.new(0, 1 + Config.Ball.Radius + 0.06, 0)
 local ball = Instance.new("Part")
 ball.Name = "Football"
@@ -329,12 +329,8 @@ ballGlow.OutlineColor = Color3.fromRGB(18, 22, 30)
 ballGlow.OutlineTransparency = 0.08
 ballGlow.Parent = ball
 
-local ballAttachment = Instance.new("Attachment")
-ballAttachment.Name = "DribbleAttachment"
-ballAttachment.Parent = ball
-
 local holder: Player? = nil
-local followConstraint: AlignPosition? = nil
+local dribbleSpin = 0
 local lastAction: { [Player]: number } = {}
 local lastTackle: { [Player]: number } = {}
 local resetting = false
@@ -378,11 +374,6 @@ local function notifyPossession()
 end
 
 local function clearDribble(velocity: Vector3?)
-	if followConstraint then
-		followConstraint:Destroy()
-		followConstraint = nil
-	end
-
 	ball.CanCollide = true
 	ball:SetAttribute("PossessorUserId", 0)
 	holder = nil
@@ -392,20 +383,16 @@ local function clearDribble(velocity: Vector3?)
 end
 
 local function releaseBall()
-	if holder or followConstraint then
+	if holder then
 		clearDribble()
 	end
 end
 
-local function setDribbleTarget(root: BasePart, humanoid: Humanoid)
-	if not followConstraint then
-		return
-	end
-
+local function getDribbleTarget(root: BasePart, humanoid: Humanoid): (Vector3, Vector3)
 	local movement = horizontalDirection(humanoid.MoveDirection)
 	local facing = horizontalDirection(root.CFrame.LookVector) or Vector3.new(0, 0, -1)
 	local direction = movement or facing
-	-- A modest extra lead while running makes turns responsive without a welded/floating look.
+	-- A modest extra lead while running makes turns responsive without a weld or a rigid constraint.
 	local lead = Config.Ball.DribbleDistance + math.min(humanoid.MoveDirection.Magnitude * 0.35, 0.35)
 	local target = root.Position + direction * lead
 
@@ -416,7 +403,7 @@ local function setDribbleTarget(root: BasePart, humanoid: Humanoid)
 	raycastParams.FilterDescendantsInstances = { root.Parent, ball }
 	local ground = Workspace:Raycast(target + Vector3.new(0, 7, 0), Vector3.new(0, -16, 0), raycastParams)
 	local targetY = if ground then ground.Position.Y + Config.Ball.Radius + 0.06 else root.Position.Y + Config.Ball.DribbleHeightOffset
-	followConstraint.Position = Vector3.new(target.X, targetY, target.Z)
+	return Vector3.new(target.X, targetY, target.Z), direction
 end
 
 local function startDribbling(player: Player, character: Model, maxDistance: number?): boolean
@@ -436,18 +423,11 @@ local function startDribbling(player: Player, character: Model, maxDistance: num
 	ball.CanCollide = false
 	ball.AssemblyLinearVelocity = Vector3.zero
 	ball.AssemblyAngularVelocity = Vector3.zero
-
-	followConstraint = Instance.new("AlignPosition")
-	followConstraint.Name = "FootballDribbleFollow"
-	followConstraint.Attachment0 = ballAttachment
-	followConstraint.Mode = Enum.PositionAlignmentMode.OneAttachment
-	followConstraint.ApplyAtCenterOfMass = true
-	followConstraint.MaxForce = Config.Ball.DribbleMaxForce
-	followConstraint.MaxVelocity = 42
-	followConstraint.Responsiveness = Config.Ball.DribbleResponsiveness
-	followConstraint.RigidityEnabled = false
-	followConstraint.Parent = ball
-	setDribbleTarget(root, humanoid)
+	-- Place near the player once, then the Heartbeat dribble loop eases it toward
+	-- a moving target each frame. This is intentionally not a weld or rigid constraint.
+	local target = getDribbleTarget(root, humanoid)
+	ball.CFrame = CFrame.new(target)
+	dribbleSpin = 0
 
 	ball:SetAttribute("PossessorUserId", player.UserId)
 	setServerOwnership()
@@ -612,7 +592,14 @@ RunService.Heartbeat:Connect(function(deltaTime)
 		if not humanoid or not root then
 			releaseBall()
 		else
-			setDribbleTarget(root, humanoid)
+			local target, direction = getDribbleTarget(root, humanoid)
+			local current = ball.CFrame
+			local followAlpha = 1 - math.exp(-deltaTime * (Config.Ball.DribbleResponsiveness / 2))
+			dribbleSpin += humanoid.MoveDirection.Magnitude * deltaTime * 7
+			local targetCFrame = CFrame.new(target) * CFrame.Angles(dribbleSpin, math.atan2(-direction.X, -direction.Z), 0)
+			ball.CFrame = current:Lerp(targetCFrame, followAlpha)
+			ball.AssemblyLinearVelocity = Vector3.zero
+			ball.AssemblyAngularVelocity = Vector3.zero
 		end
 	elseif not resetting then
 		local velocity = ball.AssemblyLinearVelocity

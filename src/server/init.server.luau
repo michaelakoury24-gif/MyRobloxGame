@@ -3,7 +3,11 @@
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
+
+local shared = ReplicatedStorage:WaitForChild("Shared")
+local Config = require(shared:WaitForChild("FootballConfig"))
 
 -- Delete all terrain and objects from the previous island / football versions.
 Workspace.Terrain:Clear()
@@ -25,6 +29,18 @@ local oldRemotes = ReplicatedStorage:FindFirstChild("FootballRemotes")
 if oldRemotes then
 	oldRemotes:Destroy()
 end
+
+local remotes = Instance.new("Folder")
+remotes.Name = "FootballRemotes"
+remotes.Parent = ReplicatedStorage
+
+local ballAction = Instance.new("RemoteEvent")
+ballAction.Name = "BallAction"
+ballAction.Parent = remotes
+
+local gameEvent = Instance.new("RemoteEvent")
+gameEvent.Name = "GameEvent"
+gameEvent.Parent = remotes
 
 local stadium = Instance.new("Folder")
 stadium.Name = "PitchMap"
@@ -256,13 +272,14 @@ createPart("EastBarrier", Vector3.new(2, barrierHeight, barrierHalfZ * 2), CFram
 createPart("NorthBarrier", Vector3.new(barrierHalfX * 2, barrierHeight, 2), CFrame.new(0, barrierY, -barrierHalfZ), barrierColor, Enum.Material.Glass, true, 0.48)
 createPart("SouthBarrier", Vector3.new(barrierHalfX * 2, barrierHeight, 2), CFrame.new(0, barrierY, barrierHalfZ), barrierColor, Enum.Material.Glass, true, 0.48)
 
--- Small black-and-white football. It uses a light physical profile when free, then
--- becomes a controlled dribble ball that follows the player who first touches it.
+-- A compact black-and-white football. It uses free physics when unclaimed and a
+-- responsive, non-welded AlignPosition dribble while under a player's possession.
+local BALL_START = CFrame.new(0, 1 + Config.Ball.Radius + 0.06, 0)
 local ball = Instance.new("Part")
 ball.Name = "Football"
 ball.Shape = Enum.PartType.Ball
-ball.Size = Vector3.new(2.2, 2.2, 2.2)
-ball.Position = Vector3.new(0, 2.2, 0)
+ball.Size = Vector3.new(Config.Ball.Radius * 2, Config.Ball.Radius * 2, Config.Ball.Radius * 2)
+ball.CFrame = BALL_START
 ball.Anchored = false
 ball.CanCollide = true
 ball.CanTouch = true
@@ -270,30 +287,31 @@ ball.CanQuery = true
 ball.CastShadow = true
 ball.Color = Color3.fromRGB(248, 248, 242)
 ball.Material = Enum.Material.SmoothPlastic
-ball.CustomPhysicalProperties = PhysicalProperties.new(0.45, 0.24, 0.45, 1, 1)
+ball.CustomPhysicalProperties = PhysicalProperties.new(0.5, 0.58, 0.28, 1, 1)
 ball.Parent = stadium
 
--- Attached black panels make the ball read as a football instead of a plain white sphere.
+-- Dark panels closely match the black-and-white football reference while remaining
+-- fully procedural (no external Roblox asset upload is required).
 local panelOffsets = {
-	Vector3.new(0, 0, -1.03),
-	Vector3.new(0.91, 0.22, -0.42),
-	Vector3.new(-0.91, 0.22, -0.42),
-	Vector3.new(0.58, -0.73, 0.48),
-	Vector3.new(-0.58, -0.73, 0.48),
-	Vector3.new(0, 0.89, 0.54),
+	Vector3.new(0, 0, -1.02),
+	Vector3.new(0.9, 0.22, -0.4),
+	Vector3.new(-0.9, 0.22, -0.4),
+	Vector3.new(0.56, -0.72, 0.5),
+	Vector3.new(-0.56, -0.72, 0.5),
+	Vector3.new(0, 0.87, 0.55),
 }
 for index, offset in ipairs(panelOffsets) do
 	local panel = Instance.new("Part")
 	panel.Name = "FootballPanel" .. index
 	panel.Shape = Enum.PartType.Ball
-	panel.Size = Vector3.new(0.48, 0.48, 0.48)
+	panel.Size = Vector3.new(0.5, 0.5, 0.5)
 	panel.Position = ball.Position + offset
 	panel.Anchored = false
 	panel.CanCollide = false
 	panel.CanTouch = false
 	panel.CanQuery = false
 	panel.Massless = true
-	panel.Color = Color3.fromRGB(25, 29, 36)
+	panel.Color = Color3.fromRGB(22, 24, 29)
 	panel.Material = Enum.Material.SmoothPlastic
 	panel.Parent = stadium
 
@@ -307,8 +325,8 @@ local ballGlow = Instance.new("Highlight")
 ballGlow.Name = "BallOutline"
 ballGlow.Adornee = ball
 ballGlow.FillTransparency = 1
-ballGlow.OutlineColor = Color3.fromRGB(20, 24, 31)
-ballGlow.OutlineTransparency = 0.1
+ballGlow.OutlineColor = Color3.fromRGB(18, 22, 30)
+ballGlow.OutlineTransparency = 0.08
 ballGlow.Parent = ball
 
 local ballAttachment = Instance.new("Attachment")
@@ -316,75 +334,256 @@ ballAttachment.Name = "DribbleAttachment"
 ballAttachment.Parent = ball
 
 local holder: Player? = nil
-local holderAttachment: Attachment? = nil
 local followConstraint: AlignPosition? = nil
+local lastAction: { [Player]: number } = {}
+local lastTackle: { [Player]: number } = {}
+local resetting = false
 
-local function releaseBall()
-	if not holder then
-		return
+local function setServerOwnership()
+	pcall(function()
+		ball:SetNetworkOwner(nil)
+	end)
+end
+
+local function getCharacterState(player: Player): (Model?, Humanoid?, BasePart?)
+	local character = player.Character
+	if not character then
+		return nil, nil, nil
 	end
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	local root = character:FindFirstChild("HumanoidRootPart")
+	if not humanoid or humanoid.Health <= 0 or not root or not root:IsA("BasePart") then
+		return character, nil, nil
+	end
+	return character, humanoid, root
+end
 
+local function horizontalDirection(direction: Vector3?): Vector3?
+	if not direction then
+		return nil
+	end
+	local flat = Vector3.new(direction.X, 0, direction.Z)
+	if flat.Magnitude < 0.05 then
+		return nil
+	end
+	return flat.Unit
+end
+
+local function notifyPossession()
+	if holder then
+		gameEvent:FireAllClients("Possession", holder.UserId, holder.DisplayName)
+	else
+		gameEvent:FireAllClients("Possession", 0, "")
+	end
+end
+
+local function clearDribble(velocity: Vector3?)
 	if followConstraint then
 		followConstraint:Destroy()
 		followConstraint = nil
 	end
-	if holderAttachment then
-		holderAttachment:Destroy()
-		holderAttachment = nil
-	end
 
 	ball.CanCollide = true
-	ball.AssemblyLinearVelocity = Vector3.zero
+	ball:SetAttribute("PossessorUserId", 0)
 	holder = nil
-	pcall(function()
-		ball:SetNetworkOwner(nil)
-	end)
+	ball.AssemblyLinearVelocity = velocity or Vector3.zero
+	setServerOwnership()
+	notifyPossession()
 end
 
-local function startDribbling(player: Player, character: Model)
-	if holder then
+local function releaseBall()
+	if holder or followConstraint then
+		clearDribble()
+	end
+end
+
+local function setDribbleTarget(root: BasePart, humanoid: Humanoid)
+	if not followConstraint then
 		return
 	end
 
-	local humanoid = character:FindFirstChildOfClass("Humanoid")
-	local root = character:FindFirstChild("HumanoidRootPart")
-	if not humanoid or humanoid.Health <= 0 or not root or not root:IsA("BasePart") then
-		return
+	local movement = horizontalDirection(humanoid.MoveDirection)
+	local facing = horizontalDirection(root.CFrame.LookVector) or Vector3.new(0, 0, -1)
+	local direction = movement or facing
+	-- A modest extra lead while running makes turns responsive without a welded/floating look.
+	local lead = Config.Ball.DribbleDistance + math.min(humanoid.MoveDirection.Magnitude * 0.35, 0.35)
+	local target = root.Position + direction * lead
+
+	-- Use the actual grass surface below the player so the ball stays at foot height
+	-- instead of sinking into or hovering above uneven geometry.
+	local raycastParams = RaycastParams.new()
+	raycastParams.FilterType = Enum.RaycastFilterType.Exclude
+	raycastParams.FilterDescendantsInstances = { root.Parent, ball }
+	local ground = Workspace:Raycast(target + Vector3.new(0, 7, 0), Vector3.new(0, -16, 0), raycastParams)
+	local targetY = if ground then ground.Position.Y + Config.Ball.Radius + 0.06 else root.Position.Y + Config.Ball.DribbleHeightOffset
+	followConstraint.Position = Vector3.new(target.X, targetY, target.Z)
+end
+
+local function startDribbling(player: Player, character: Model, maxDistance: number?): boolean
+	if resetting or holder then
+		return false
+	end
+
+	local _, humanoid, root = getCharacterState(player)
+	if not humanoid or not root then
+		return false
+	end
+	if (ball.Position - root.Position).Magnitude > (maxDistance or Config.Ball.ControlRange) then
+		return false
 	end
 
 	holder = player
 	ball.CanCollide = false
-	-- Put the smaller ball just in front of the player's feet before the constraint takes over.
-	ball.CFrame = root.CFrame * CFrame.new(0, -1.45, -2.65)
 	ball.AssemblyLinearVelocity = Vector3.zero
 	ball.AssemblyAngularVelocity = Vector3.zero
-
-	holderAttachment = Instance.new("Attachment")
-	holderAttachment.Name = "FootballDribbleTarget"
-	holderAttachment.Position = Vector3.new(0, -1.45, -2.65)
-	holderAttachment.Parent = root
 
 	followConstraint = Instance.new("AlignPosition")
 	followConstraint.Name = "FootballDribbleFollow"
 	followConstraint.Attachment0 = ballAttachment
-	followConstraint.Attachment1 = holderAttachment
-	followConstraint.Mode = Enum.PositionAlignmentMode.TwoAttachment
+	followConstraint.Mode = Enum.PositionAlignmentMode.OneAttachment
 	followConstraint.ApplyAtCenterOfMass = true
-	followConstraint.MaxForce = 70000
-	followConstraint.MaxVelocity = 90
-	followConstraint.Responsiveness = 120
+	followConstraint.MaxForce = Config.Ball.DribbleMaxForce
+	followConstraint.MaxVelocity = 42
+	followConstraint.Responsiveness = Config.Ball.DribbleResponsiveness
 	followConstraint.RigidityEnabled = false
 	followConstraint.Parent = ball
+	setDribbleTarget(root, humanoid)
 
-	pcall(function()
-		ball:SetNetworkOwner(nil)
+	ball:SetAttribute("PossessorUserId", player.UserId)
+	setServerOwnership()
+	notifyPossession()
+	humanoid.Died:Once(releaseBall)
+	return true
+end
+
+local function resetBall()
+	if resetting then
+		return
+	end
+	resetting = true
+	releaseBall()
+	ball.Anchored = true
+	ball.CanCollide = false
+	ball.CFrame = BALL_START
+	ball.AssemblyLinearVelocity = Vector3.zero
+	ball.AssemblyAngularVelocity = Vector3.zero
+	gameEvent:FireAllClients("Reset")
+
+	task.delay(Config.Ball.ResetDelay, function()
+		if not ball.Parent then
+			return
+		end
+		ball.CanCollide = true
+		ball.Anchored = false
+		resetting = false
+		setServerOwnership()
+	end)
+end
+
+local function validHolder(player: Player): (Humanoid?, BasePart?)
+	if holder ~= player or resetting then
+		return nil, nil
+	end
+	local _, humanoid, root = getCharacterState(player)
+	if not humanoid or not root or (ball.Position - root.Position).Magnitude > Config.Ball.ControlRange + 2 then
+		return nil, nil
+	end
+	return humanoid, root
+end
+
+local function kickBall(player: Player, kind: "Shoot" | "Pass", requestedDirection: unknown, requestedCharge: unknown)
+	local humanoid, root = validHolder(player)
+	if not humanoid or not root then
+		gameEvent:FireClient(player, "Feedback", "GET POSSESSION FIRST")
+		return
+	end
+
+	local now = os.clock()
+	local cooldown = if kind == "Shoot" then Config.Shot.Cooldown else Config.Pass.Cooldown
+	if now - (lastAction[player] or 0) < cooldown then
+		return
+	end
+	lastAction[player] = now
+
+	local direction = if typeof(requestedDirection) == "Vector3" then horizontalDirection(requestedDirection) else nil
+	direction = direction or horizontalDirection(root.CFrame.LookVector)
+	if not direction then
+		return
+	end
+
+	local velocity: Vector3
+	if kind == "Shoot" then
+		local charge = if typeof(requestedCharge) == "number" then math.clamp(requestedCharge, 0, 1) else 0
+		local speed = Config.Shot.MinSpeed + (Config.Shot.MaxSpeed - Config.Shot.MinSpeed) * charge
+		local lift = Config.Shot.MinLift + (Config.Shot.MaxLift - Config.Shot.MinLift) * charge
+		velocity = direction * speed + Vector3.new(0, lift, 0)
+	else
+		velocity = direction * Config.Pass.Speed + Vector3.new(0, Config.Pass.Lift, 0)
+	end
+
+	clearDribble(velocity)
+	ball.AssemblyAngularVelocity = Vector3.new(-direction.Z, 0, direction.X) * (if kind == "Shoot" then 34 else 22)
+	gameEvent:FireClient(player, "Feedback", if kind == "Shoot" then "SHOT!" else "PASS!")
+end
+
+local function slideTackle(player: Player, requestedDirection: unknown)
+	local character, humanoid, root = getCharacterState(player)
+	if not character or not humanoid or not root or resetting then
+		return
+	end
+
+	local now = os.clock()
+	if now - (lastTackle[player] or 0) < Config.Tackle.Cooldown then
+		gameEvent:FireClient(player, "Feedback", "TACKLE RECHARGING")
+		return
+	end
+	lastTackle[player] = now
+
+	local direction = if typeof(requestedDirection) == "Vector3" then horizontalDirection(requestedDirection) else nil
+	direction = direction or horizontalDirection(root.CFrame.LookVector)
+	if not direction then
+		return
+	end
+
+	-- A brief low, controlled slide. No vertical force is applied, avoiding unpredictable launches.
+	local oldHipHeight = humanoid.HipHeight
+	local oldAutoRotate = humanoid.AutoRotate
+	humanoid.HipHeight = math.max(0, oldHipHeight - 0.85)
+	humanoid.AutoRotate = false
+	local slideVelocity = Instance.new("BodyVelocity")
+	slideVelocity.Name = "TackleSlide"
+	slideVelocity.MaxForce = Vector3.new(70000, 0, 70000)
+	slideVelocity.P = 2600
+	slideVelocity.Velocity = direction * Config.Tackle.SlideSpeed
+	slideVelocity.Parent = root
+
+	task.delay(Config.Tackle.SlideDuration, function()
+		if slideVelocity.Parent then
+			slideVelocity:Destroy()
+		end
+		if humanoid.Parent then
+			humanoid.HipHeight = oldHipHeight
+			humanoid.AutoRotate = oldAutoRotate
+		end
 	end)
 
-	humanoid.Died:Once(releaseBall)
+	if holder and holder ~= player then
+		local targetCharacter, _, targetRoot = getCharacterState(holder)
+		if targetCharacter and targetRoot and (targetRoot.Position - root.Position).Magnitude <= Config.Tackle.Range then
+			clearDribble()
+			if startDribbling(player, character, Config.Tackle.Range + 1) then
+				gameEvent:FireAllClients("Tackle", player.UserId)
+			end
+		end
+	elseif not holder and (ball.Position - root.Position).Magnitude <= Config.Tackle.Range then
+		if startDribbling(player, character, Config.Tackle.Range) then
+			gameEvent:FireAllClients("Tackle", player.UserId)
+		end
+	end
 end
 
 ball.Touched:Connect(function(otherPart: BasePart)
-	if holder then
+	if holder or resetting then
 		return
 	end
 	local character = otherPart:FindFirstAncestorOfClass("Model")
@@ -397,15 +596,54 @@ ball.Touched:Connect(function(otherPart: BasePart)
 	end
 end)
 
+ballAction.OnServerEvent:Connect(function(player: Player, action: unknown, direction: unknown, amount: unknown)
+	if action == "Shoot" then
+		kickBall(player, "Shoot", direction, amount)
+	elseif action == "Pass" then
+		kickBall(player, "Pass", direction, nil)
+	elseif action == "Tackle" then
+		slideTackle(player, direction)
+	end
+end)
+
+RunService.Heartbeat:Connect(function(deltaTime)
+	if holder then
+		local _, humanoid, root = getCharacterState(holder)
+		if not humanoid or not root then
+			releaseBall()
+		else
+			setDribbleTarget(root, humanoid)
+		end
+	elseif not resetting then
+		local velocity = ball.AssemblyLinearVelocity
+		local flatVelocity = Vector3.new(velocity.X, 0, velocity.Z)
+		if ball.Position.Y <= 2.4 and flatVelocity.Magnitude > 0.05 then
+			local multiplier = Config.Ball.FreeFriction ^ (deltaTime * 60)
+			flatVelocity *= multiplier
+			if flatVelocity.Magnitude > Config.Ball.MaxFreeSpeed then
+				flatVelocity = flatVelocity.Unit * Config.Ball.MaxFreeSpeed
+			end
+			ball.AssemblyLinearVelocity = Vector3.new(flatVelocity.X, velocity.Y, flatVelocity.Z)
+		end
+	end
+
+	if not resetting then
+		local position = ball.Position
+		if position.Y < -15 or math.abs(position.X) > Config.Ball.OutOfBoundsX or math.abs(position.Z) > Config.Ball.OutOfBoundsZ then
+			resetBall()
+		end
+	end
+end)
+
 Players.PlayerRemoving:Connect(function(player)
 	if player == holder then
 		releaseBall()
 	end
+	lastAction[player] = nil
+	lastTackle[player] = nil
 end)
 
-pcall(function()
-	ball:SetNetworkOwner(nil)
-end)
+setServerOwnership()
 
 -- Invisible spawn surface at midfield; players always appear on the pitch.
 local spawn = Instance.new("SpawnLocation")

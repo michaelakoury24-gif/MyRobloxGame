@@ -1,17 +1,34 @@
 # Football Stadium Map
 
-The project now builds a self-contained football pitch map when Play starts.
+A Rojo-powered football stadium with a multiplayer-authoritative ball system. The pitch, nets, stands, barriers, and controls are generated from source when Play starts.
 
-## Map features
+## Stadium map
 
-- Full striped grass football pitch with touchlines, halfway line, penalty boxes, goals, and centre spot
-- Full white metal goals with translucent back, side, and roof nets plus visible net grid strands
-- Four five-tier grandstands that surround the whole pitch, with individual colourful seats, concrete steps, rails, support columns, and roofs
-- Four tall, transparent, collidable barriers around the outer stadium perimeter
-- A second inner glass barrier around the pitch, keeping players out of the stands while leaving the goals accessible
-- Smaller black-and-white physics football at midfield, with attached black panels
-- Touch-to-dribble behaviour: the ball locks smoothly in front of the first player who touches it and follows their movement
-- Midfield spawn point on the pitch
-- No island terrain, baseplate, floating islands, waterfall, or football-game UI
+- Striped grass pitch with markings, penalty boxes, full netted goals, and midfield spawn
+- Four five-tier grandstands surrounding the pitch, with individual seats, concrete steps, rails, columns, and roofs
+- Inner pitch barrier prevents players entering the stands; outer barrier prevents leaving the stadium
 
-`src/server/init.server.luau` clears the prior terrain/map and creates the stadium directly in `Workspace`.
+## Ball gameplay
+
+- Small black-and-white football with procedural dark panels inspired by the supplied classic football reference
+- Server-owned possession: touch a free ball to gain possession
+- Smooth non-welded dribbling uses a responsive position constraint and ground raycast, keeping the ball at foot height while moving and turning
+- Hold **left click** or **F** to charge and release a shot; longer holds hit harder and lift higher
+- **Q** sends a quick ground pass in the aim direction
+- **E** performs a short, low slide tackle with a server cooldown; tackle an opponent within range to win the ball
+- Free ball rolling uses friction, bounce, collision handling, speed limiting, and a centre reset if it exits the field
+
+## Mobile controls
+
+Touch devices receive **SHOOT**, **PASS**, and **TACKLE** buttons through `ContextActionService`. The on-screen guide also shows every PC and mobile control.
+
+## Multiplayer and security
+
+All possession, shooting, passing, tackling, cooldown, range, and out-of-bounds checks run on the server. Clients only request an action and provide an aim direction; the server validates it before moving the ball.
+
+## Project layout
+
+- `src/server/init.server.luau` — stadium creation and authoritative multiplayer ball mechanics
+- `src/client/init.client.luau` — PC/mobile controls, charge meter, and HUD
+- `src/shared/FootballConfig.luau` — shared gameplay values
+- `default.project.json` — valid Rojo mapping for server, client, and shared folders

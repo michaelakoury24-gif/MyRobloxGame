@@ -49,7 +49,7 @@
           ]
         }
       },
-      "FootballStudioPreview": {
+      "FootballPitch": {
         "$className": "Model",
         "PreviewFoundation": {
           "$className": "Part",

@@ -278,12 +278,8 @@ for index, position in ipairs(spawnPositions) do
 	spawn.Parent = spawns
 end
 
--- The project file contains a light editor-only field preview. Remove it as Play starts,
--- after this script has finished building the full runtime stadium above.
-local studioPreview = Workspace:FindFirstChild("FootballStudioPreview")
-if studioPreview then
-	studioPreview:Destroy()
-end
+-- FootballPitch is a permanent, source-controlled ground under the dynamic stadium.
+-- It remains in play as a fail-safe floor even if a later decorative object has a problem.
 
 -- Physical ball. It is server-owned so each kick has the same outcome for every player.
 local ball = create("Part", {

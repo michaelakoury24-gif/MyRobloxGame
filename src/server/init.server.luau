@@ -71,7 +71,7 @@ local lineColor = Color3.fromRGB(250, 252, 250)
 -- The base and striped grass pitch form the playable map floor.
 createPart(
 	"StadiumFoundation",
-	Vector3.new(240, 6, 190),
+	Vector3.new(320, 6, 260),
 	CFrame.new(0, -3, 0),
 	Color3.fromRGB(49, 57, 68),
 	Enum.Material.Concrete,
@@ -113,72 +113,131 @@ end
 penaltyBox(-1)
 penaltyBox(1)
 
--- Goals stay inside the perimeter and use simple bright white posts.
+-- Full goals with back and side nets. The translucent fabric planes plus grid strands
+-- make the nets clear from both the pitch and the new end stands.
 local function goal(side: number)
 	local x = side * HALF_LENGTH
+	local goalDepth = 8
+	local backX = x + side * goalDepth
 	local halfGoalWidth = 19
+	local goalHeight = 14
+	local netColor = Color3.fromRGB(231, 242, 249)
+
 	for _, z in { -halfGoalWidth, halfGoalWidth } do
-		createPart("GoalPost", Vector3.new(0.75, 14, 0.75), CFrame.new(x, 8, z), lineColor, Enum.Material.Metal, true)
+		createPart("GoalPost", Vector3.new(0.75, goalHeight, 0.75), CFrame.new(x, 8, z), lineColor, Enum.Material.Metal, true)
+		createPart("NetSupport", Vector3.new(0.45, goalHeight, 0.45), CFrame.new(backX, 8, z), lineColor, Enum.Material.Metal, true)
 	end
 	createPart("GoalCrossbar", Vector3.new(0.75, 0.75, halfGoalWidth * 2), CFrame.new(x, 15, 0), lineColor, Enum.Material.Metal, true)
+	createPart("NetBackBar", Vector3.new(0.45, 0.45, halfGoalWidth * 2), CFrame.new(backX, 15, 0), lineColor, Enum.Material.Metal, true)
+
+	local backNet = createPart("GoalNetBack", Vector3.new(0.16, goalHeight, halfGoalWidth * 2), CFrame.new(backX, 8, 0), netColor, Enum.Material.Fabric, false, 0.5)
+	backNet.CastShadow = false
+	local roofNet = createPart("GoalNetRoof", Vector3.new(goalDepth, 0.16, halfGoalWidth * 2), CFrame.new((x + backX) / 2, 15, 0), netColor, Enum.Material.Fabric, false, 0.58)
+	roofNet.CastShadow = false
+	for _, z in { -halfGoalWidth, halfGoalWidth } do
+		local sideNet = createPart("GoalNetSide", Vector3.new(goalDepth, goalHeight, 0.16), CFrame.new((x + backX) / 2, 8, z), netColor, Enum.Material.Fabric, false, 0.58)
+		sideNet.CastShadow = false
+	end
+
+	-- Fine net grid across the rear panel.
+	for z = -halfGoalWidth + 4, halfGoalWidth - 4, 4 do
+		createPart("NetVertical", Vector3.new(0.24, goalHeight, 0.1), CFrame.new(backX - side * 0.12, 8, z), netColor, Enum.Material.SmoothPlastic, false, 0.22)
+	end
+	for y = 3, goalHeight - 1, 3 do
+		createPart("NetHorizontal", Vector3.new(0.24, 0.1, halfGoalWidth * 2), CFrame.new(backX - side * 0.12, y, 0), netColor, Enum.Material.SmoothPlastic, false, 0.22)
+	end
 end
 goal(-1)
 goal(1)
 
--- Five stepped seating tiers on each sideline create two full grandstands.
+-- A complete four-sided stadium: stepped concrete tiers, individual seats, rails,
+-- support columns, and roofs wrap around all four edges of the pitch.
 local seatColours = {
-	Color3.fromRGB(52, 119, 214),
-	Color3.fromRGB(220, 76, 74),
-	Color3.fromRGB(241, 194, 75),
-	Color3.fromRGB(69, 172, 110),
-	Color3.fromRGB(132, 94, 196),
+	Color3.fromRGB(45, 109, 207),
+	Color3.fromRGB(204, 69, 65),
+	Color3.fromRGB(238, 187, 59),
+	Color3.fromRGB(55, 159, 97),
+	Color3.fromRGB(122, 83, 182),
 }
-local standStructure = Color3.fromRGB(36, 46, 61)
+local standStructure = Color3.fromRGB(51, 59, 72)
+local concreteColour = Color3.fromRGB(110, 119, 130)
+local roofColour = Color3.fromRGB(28, 35, 48)
+local railColour = Color3.fromRGB(222, 232, 240)
+local STAND_ROWS = 5
 
-local function grandstand(side: number)
-	for row = 0, 4 do
-		local height = 3 + row * 1.25
-		local y = height / 2
-		local z = side * (HALF_WIDTH + 8 + row * 5)
-		createPart(
-			"StandStructure",
-			Vector3.new(FIELD_LENGTH + 22, height, 5.5),
-			CFrame.new(0, y, z),
-			standStructure,
-			Enum.Material.Metal,
-			true
-		)
-		createPart(
-			"SeatTier",
-			Vector3.new(FIELD_LENGTH + 17, 0.45, 4.4),
-			CFrame.new(0, height + 0.25, z),
-			seatColours[row + 1],
-			Enum.Material.SmoothPlastic,
-			true
-		)
+local function seatColour(row: number, column: number): Color3
+	return seatColours[((row + math.floor(column / 3) - 1) % #seatColours) + 1]
+end
+
+local function buildSideSeats(side: number)
+	for row = 0, STAND_ROWS - 1 do
+		local height = 3 + row * 1.35
+		local z = side * (HALF_WIDTH + 8 + row * 5.2)
+		createPart("SideStandTier", Vector3.new(FIELD_LENGTH + 24, height, 5.8), CFrame.new(0, height / 2, z), concreteColour, Enum.Material.Concrete, true)
+		createPart("SideStandWalkway", Vector3.new(FIELD_LENGTH + 20, 0.35, 5), CFrame.new(0, height + 0.2, z), standStructure, Enum.Material.Metal, true)
+
+		for column = -10, 10 do
+			local x = column * 9
+			createPart(
+				"StadiumSeat",
+				Vector3.new(7.1, 0.8, 3.1),
+				CFrame.new(x, height + 0.72, z - side * 0.35),
+				seatColour(row + 1, column + 11),
+				Enum.Material.SmoothPlastic,
+				true
+			)
+		end
 	end
 
-	local railZ = side * (HALF_WIDTH + 3.5)
-	createPart("StandRail", Vector3.new(FIELD_LENGTH + 24, 1.1, 0.22), CFrame.new(0, 2.6, railZ), Color3.fromRGB(218, 228, 238), Enum.Material.Metal, false)
-	createPart(
-		"StandRoof",
-		Vector3.new(FIELD_LENGTH + 28, 0.6, 17),
-		CFrame.new(0, 15.5, side * (HALF_WIDTH + 19)),
-		Color3.fromRGB(28, 35, 48),
-		Enum.Material.Metal,
-		true
-	)
+	local railZ = side * (HALF_WIDTH + 3.4)
+	createPart("SideStandRail", Vector3.new(FIELD_LENGTH + 25, 1.2, 0.22), CFrame.new(0, 2.6, railZ), railColour, Enum.Material.Metal, false)
+	for x = -96, 96, 32 do
+		createPart("SideRoofColumn", Vector3.new(1.15, 16, 1.15), CFrame.new(x, 8, side * (HALF_WIDTH + 25)), standStructure, Enum.Material.Metal, true)
+	end
+	createPart("SideStandRoof", Vector3.new(FIELD_LENGTH + 30, 0.65, 19), CFrame.new(0, 16, side * (HALF_WIDTH + 20)), roofColour, Enum.Material.Metal, true)
 end
-grandstand(-1)
-grandstand(1)
+
+local function buildEndSeats(side: number)
+	local endSpan = FIELD_WIDTH + 18
+	for row = 0, STAND_ROWS - 1 do
+		local height = 3 + row * 1.35
+		local x = side * (HALF_LENGTH + 17 + row * 5.2)
+		createPart("EndStandTier", Vector3.new(5.8, height, endSpan), CFrame.new(x, height / 2, 0), concreteColour, Enum.Material.Concrete, true)
+		createPart("EndStandWalkway", Vector3.new(5, 0.35, endSpan - 4), CFrame.new(x, height + 0.2, 0), standStructure, Enum.Material.Metal, true)
+
+		for column = -7, 7 do
+			local z = column * 8.5
+			createPart(
+				"StadiumSeat",
+				Vector3.new(3.1, 0.8, 6.6),
+				CFrame.new(x - side * 0.35, height + 0.72, z),
+				seatColour(row + 1, column + 8),
+				Enum.Material.SmoothPlastic,
+				true
+			)
+		end
+	end
+
+	local railX = side * (HALF_LENGTH + 12.4)
+	createPart("EndStandRail", Vector3.new(0.22, 1.2, endSpan + 2), CFrame.new(railX, 2.6, 0), railColour, Enum.Material.Metal, false)
+	for z = -56, 56, 28 do
+		createPart("EndRoofColumn", Vector3.new(1.15, 16, 1.15), CFrame.new(side * (HALF_LENGTH + 35), 8, z), standStructure, Enum.Material.Metal, true)
+	end
+	createPart("EndStandRoof", Vector3.new(19, 0.65, endSpan + 6), CFrame.new(side * (HALF_LENGTH + 30), 16, 0), roofColour, Enum.Material.Metal, true)
+end
+
+buildSideSeats(-1)
+buildSideSeats(1)
+buildEndSeats(-1)
+buildEndSeats(1)
 
 -- A tall transparent barrier completely encloses the pitch and seating area.
 -- It is collidable on every side, so players cannot walk or jump out of the map.
 local barrierColor = Color3.fromRGB(111, 221, 255)
-local barrierHeight = 28
+local barrierHeight = 38
 local barrierY = barrierHeight / 2
-local barrierHalfX = 113
-local barrierHalfZ = 88
+local barrierHalfX = 150
+local barrierHalfZ = 118
 createPart("WestBarrier", Vector3.new(2, barrierHeight, barrierHalfZ * 2), CFrame.new(-barrierHalfX, barrierY, 0), barrierColor, Enum.Material.Glass, true, 0.48)
 createPart("EastBarrier", Vector3.new(2, barrierHeight, barrierHalfZ * 2), CFrame.new(barrierHalfX, barrierY, 0), barrierColor, Enum.Material.Glass, true, 0.48)
 createPart("NorthBarrier", Vector3.new(barrierHalfX * 2, barrierHeight, 2), CFrame.new(0, barrierY, -barrierHalfZ), barrierColor, Enum.Material.Glass, true, 0.48)

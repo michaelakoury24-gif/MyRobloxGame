@@ -221,24 +221,68 @@ end
 createGoal(-1)
 createGoal(1)
 
--- Low spectator stands and floodlights keep the map feeling like a football ground.
-local standColor = Color3.fromRGB(31, 48, 70)
-for _, side in { -1, 1 } do
-	for row = 0, 2 do
-		local z = side * (HALF_WIDTH + 10 + row * 5)
-		local y = 1.5 + row * 2.5
-		local stand = createPart(
+-- Tiered spectator stands run along both sidelines. The coloured tiers read as seats
+-- from the pitch while the dark structure makes the stadium feel enclosed.
+local standStructureColor = Color3.fromRGB(29, 39, 55)
+local seatColors = {
+	Color3.fromRGB(50, 121, 220),
+	Color3.fromRGB(220, 74, 69),
+	Color3.fromRGB(242, 195, 71),
+	Color3.fromRGB(48, 171, 104),
+	Color3.fromRGB(137, 96, 201),
+}
+
+local function createGrandstand(side: number)
+	local standWidth = FIELD_LENGTH + 34
+	for row = 0, 4 do
+		local z = side * (HALF_WIDTH + 7 + row * 5.2)
+		local y = 1.4 + row * 2.2
+		local structure = createPart(
 			scenery,
-			"SpectatorStand",
-			Vector3.new(FIELD_LENGTH + 36, 3 + row * 1.2, 5),
+			"GrandstandStructure",
+			Vector3.new(standWidth, 2.8 + row * 0.45, 5.4),
 			CFrame.new(0, y, z),
-			standColor,
+			standStructureColor,
 			Enum.Material.Metal,
 			true
 		)
-		stand.CastShadow = true
+		structure.CastShadow = true
+
+		local seatTop = y + (2.8 + row * 0.45) / 2 + 0.18
+		createPart(
+			scenery,
+			"SeatTier",
+			Vector3.new(standWidth - 3, 0.35, 4.35),
+			CFrame.new(0, seatTop, z),
+			seatColors[row + 1],
+			Enum.Material.SmoothPlastic,
+			true
+		)
 	end
+
+	local railZ = side * (HALF_WIDTH + 3.9)
+	createPart(
+		scenery,
+		"PitchSideRail",
+		Vector3.new(standWidth, 1.15, 0.22),
+		CFrame.new(0, 2.3, railZ),
+		Color3.fromRGB(218, 228, 235),
+		Enum.Material.Metal,
+		false
+	)
+	createPart(
+		scenery,
+		"GrandstandRoof",
+		Vector3.new(standWidth + 4, 0.5, 18),
+		CFrame.new(0, 14.5, side * (HALF_WIDTH + 18)),
+		Color3.fromRGB(22, 29, 40),
+		Enum.Material.Metal,
+		true
+	)
 end
+
+createGrandstand(-1)
+createGrandstand(1)
 
 for _, x in { -HALF_LENGTH - 18, HALF_LENGTH + 18 } do
 	for _, z in { -HALF_WIDTH - 13, HALF_WIDTH + 13 } do

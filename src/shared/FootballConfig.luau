@@ -7,7 +7,7 @@ local Config = {
 		ControlRange = 8,
 		DribbleDistance = 3.35,
 		DribbleHeightOffset = -1.48,
-		DribbleResponsiveness = 34,
+		DribbleResponsiveness = 24,
 		FreeFriction = 0.985,
 		MaxFreeSpeed = 105,
 		ResetDelay = 1.2,
@@ -20,16 +20,16 @@ local Config = {
 		MaxChargeTime = 1.35,
 		MinSpeed = 48,
 		MaxSpeed = 104,
-		MinLift = 5,
-		MaxLift = 22,
-		AimLiftBoost = 24,
-		Cooldown = 0.22,
+		MinLift = 8,
+		MaxLift = 26,
+		AimLiftBoost = 30,
+		Cooldown = 0.06,
 	},
 
 	Pass = {
 		Speed = 62,
-		Lift = 1.4,
-		Cooldown = 0.16,
+		Lift = 0.45,
+		Cooldown = 0.05,
 	},
 
 	Tackle = {

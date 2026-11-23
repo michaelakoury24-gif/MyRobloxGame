@@ -1,10 +1,11 @@
 --!strict
--- Client input, mobile controls, charge UI, and football control guide.
+-- Aim, shot charging, PC/mobile actions, and a short local slide pose.
 
 local ContextActionService = game:GetService("ContextActionService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
 
 local player = Players.LocalPlayer
@@ -23,75 +24,15 @@ local function make(className: string, properties: { [string]: any }): Instance
 end
 
 local gui = make("ScreenGui", {
-	Name = "FootballControls",
+	Name = "FootballAim",
 	ResetOnSpawn = false,
 	IgnoreGuiInset = true,
 	ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
 }) :: ScreenGui
 gui.Parent = player:WaitForChild("PlayerGui")
 
-local function createPanel(name: string, size: UDim2, position: UDim2, anchor: Vector2): Frame
-	local panel = make("Frame", {
-		Name = name,
-		AnchorPoint = anchor,
-		Size = size,
-		Position = position,
-		BackgroundColor3 = Color3.fromRGB(13, 23, 39),
-		BackgroundTransparency = 0.14,
-		BorderSizePixel = 0,
-	}) :: Frame
-	panel.Parent = gui
-	local corner = make("UICorner", { CornerRadius = UDim.new(0, 12) })
-	corner.Parent = panel
-	local stroke = make("UIStroke", {
-		Color = Color3.fromRGB(138, 199, 255),
-		Transparency = 0.38,
-		Thickness = 1.2,
-	})
-	stroke.Parent = panel
-	return panel
-end
-
-local controlsPanel = createPanel("ControlsPanel", UDim2.fromOffset(335, 158), UDim2.new(0, 22, 1, -22), Vector2.new(0, 1))
-local controlsTitle = make("TextLabel", {
-	BackgroundTransparency = 1,
-	Position = UDim2.fromOffset(16, 12),
-	Size = UDim2.new(1, -32, 0, 22),
-	Font = Enum.Font.GothamBlack,
-	Text = "FOOTBALL CONTROLS",
-	TextColor3 = Color3.fromRGB(255, 226, 114),
-	TextSize = 16,
-	TextXAlignment = Enum.TextXAlignment.Left,
-}) :: TextLabel
-controlsTitle.Parent = controlsPanel
-
-local controlsText = make("TextLabel", {
-	BackgroundTransparency = 1,
-	Position = UDim2.fromOffset(16, 39),
-	Size = UDim2.new(1, -32, 1, -48),
-	Font = Enum.Font.GothamMedium,
-	Text = "Touch the ball to dribble\nHold CLICK or F  Charge shot\nAim higher with the centre crosshair for lift\nQ  Fast ground pass     E  Slide tackle\nMobile: use the on-screen buttons",
-	TextColor3 = Color3.fromRGB(240, 245, 252),
-	TextSize = 14,
-	TextXAlignment = Enum.TextXAlignment.Left,
-	TextYAlignment = Enum.TextYAlignment.Top,
-	TextWrapped = true,
-}) :: TextLabel
-controlsText.Parent = controlsPanel
-
-local statusPanel = createPanel("StatusPanel", UDim2.fromOffset(390, 50), UDim2.new(0.5, 0, 1, -36), Vector2.new(0.5, 1))
-local statusText = make("TextLabel", {
-	BackgroundTransparency = 1,
-	Size = UDim2.fromScale(1, 1),
-	Font = Enum.Font.GothamBold,
-	Text = "TOUCH THE BALL TO DRIBBLE",
-	TextColor3 = Color3.fromRGB(255, 255, 255),
-	TextSize = 16,
-	TextWrapped = true,
-}) :: TextLabel
-statusText.Parent = statusPanel
-
--- Screen-centre crosshair: camera direction through this point determines the shot arc.
+-- The crosshair is deliberately the only persistent football UI. Camera direction
+-- through its centre is sent to the server for shots and passes.
 local crosshair = make("Frame", {
 	Name = "ShotCrosshair",
 	AnchorPoint = Vector2.new(0.5, 0.5),
@@ -100,6 +41,7 @@ local crosshair = make("Frame", {
 	Size = UDim2.fromOffset(30, 30),
 }) :: Frame
 crosshair.Parent = gui
+
 local crosshairHorizontal = make("Frame", {
 	BackgroundColor3 = Color3.fromRGB(255, 255, 255),
 	BorderSizePixel = 0,
@@ -124,57 +66,33 @@ crosshairDot.Parent = crosshair
 local crosshairCorner = make("UICorner", { CornerRadius = UDim.new(1, 0) })
 crosshairCorner.Parent = crosshairDot
 
-local chargePanel = createPanel("ChargePanel", UDim2.fromOffset(280, 42), UDim2.new(0.5, 0, 1, -96), Vector2.new(0.5, 1))
-chargePanel.Visible = false
+-- The charge bar only appears while shooting; the old control/instruction panels are removed.
 local chargeBack = make("Frame", {
-	BackgroundColor3 = Color3.fromRGB(33, 44, 58),
+	Name = "ShotCharge",
+	AnchorPoint = Vector2.new(0.5, 1),
+	BackgroundColor3 = Color3.fromRGB(27, 34, 45),
+	BackgroundTransparency = 0.12,
 	BorderSizePixel = 0,
-	Position = UDim2.fromOffset(12, 12),
-	Size = UDim2.new(1, -24, 0, 18),
+	Position = UDim2.new(0.5, 0, 1, -42),
+	Size = UDim2.fromOffset(250, 16),
+	Visible = false,
 }) :: Frame
-chargeBack.Parent = chargePanel
+chargeBack.Parent = gui
+local chargeCorner = make("UICorner", { CornerRadius = UDim.new(0, 6) })
+chargeCorner.Parent = chargeBack
 local chargeFill = make("Frame", {
-	BackgroundColor3 = Color3.fromRGB(255, 188, 63),
+	BackgroundColor3 = Color3.fromRGB(255, 186, 62),
 	BorderSizePixel = 0,
 	Size = UDim2.fromScale(0, 1),
 }) :: Frame
 chargeFill.Parent = chargeBack
-local chargeLabel = make("TextLabel", {
-	BackgroundTransparency = 1,
-	Position = UDim2.new(0, 0, 0, -21),
-	Size = UDim2.new(1, 0, 0, 18),
-	Font = Enum.Font.GothamBold,
-	Text = "SHOT POWER",
-	TextColor3 = Color3.fromRGB(255, 245, 215),
-	TextSize = 13,
-}) :: TextLabel
-chargeLabel.Parent = chargePanel
-
-local statusNonce = 0
-local function showStatus(text: string, color: Color3?, duration: number?)
-	statusNonce += 1
-	local nonce = statusNonce
-	statusText.Text = text
-	statusText.TextColor3 = color or Color3.fromRGB(255, 255, 255)
-	if duration then
-		task.delay(duration, function()
-			if nonce == statusNonce then
-				statusText.Text = "TOUCH THE BALL TO DRIBBLE"
-				statusText.TextColor3 = Color3.fromRGB(255, 255, 255)
-			end
-		end)
-	end
-end
+local chargeFillCorner = make("UICorner", { CornerRadius = UDim.new(0, 6) })
+chargeFillCorner.Parent = chargeFill
 
 local function aimDirection(): Vector3
 	local camera = Workspace.CurrentCamera
-	if camera then
-		-- The screen-centre crosshair follows this camera vector. Preserve its vertical
-		-- component so looking higher produces a higher charged shot on the server.
-		local look = camera.CFrame.LookVector
-		if look.Magnitude > 0.05 then
-			return look.Unit
-		end
+	if camera and camera.CFrame.LookVector.Magnitude > 0.05 then
+		return camera.CFrame.LookVector.Unit
 	end
 
 	local character = player.Character
@@ -191,7 +109,7 @@ local function startCharging()
 		return
 	end
 	chargeStartedAt = os.clock()
-	chargePanel.Visible = true
+	chargeBack.Visible = true
 end
 
 local function releaseShot()
@@ -200,7 +118,7 @@ local function releaseShot()
 	end
 	local elapsed = os.clock() - chargeStartedAt
 	chargeStartedAt = nil
-	chargePanel.Visible = false
+	chargeBack.Visible = false
 	local charge = math.clamp(elapsed / Config.Shot.MaxChargeTime, 0, 1)
 	ballAction:FireServer("Shoot", aimDirection(), charge)
 end
@@ -234,15 +152,38 @@ end, true, Enum.KeyCode.E, Enum.KeyCode.ButtonB)
 ContextActionService:SetTitle("FootballTackle", "TACKLE")
 ContextActionService:SetPosition("FootballTackle", UDim2.new(1, -108, 1, -165))
 
+local function playLocalSlidePose()
+	local character = player.Character
+	if not character then
+		return
+	end
+	local rootJoint = character:FindFirstChild("RootJoint", true)
+	if not rootJoint or not rootJoint:IsA("Motor6D") then
+		return
+	end
+
+	local originalTransform = rootJoint.Transform
+	local crouch = TweenService:Create(rootJoint, TweenInfo.new(0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		Transform = CFrame.Angles(math.rad(-52), 0, 0),
+	})
+	crouch:Play()
+	task.delay(Config.Tackle.SlideDuration, function()
+		if rootJoint.Parent then
+			TweenService:Create(rootJoint, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+				Transform = originalTransform,
+			}):Play()
+		end
+	end)
+end
+
 RunService.RenderStepped:Connect(function()
 	if chargeStartedAt then
 		local amount = math.clamp((os.clock() - chargeStartedAt) / Config.Shot.MaxChargeTime, 0, 1)
 		chargeFill.Size = UDim2.fromScale(amount, 1)
-		chargeLabel.Text = string.format("SHOT POWER  %d%%", math.floor(amount * 100))
-		local chargeColor = Color3.fromRGB(255, math.floor(220 - amount * 120), 72)
-		crosshairHorizontal.BackgroundColor3 = chargeColor
-		crosshairVertical.BackgroundColor3 = chargeColor
-		crosshairDot.BackgroundColor3 = chargeColor
+		local color = Color3.fromRGB(255, math.floor(216 - amount * 120), 70)
+		crosshairHorizontal.BackgroundColor3 = color
+		crosshairVertical.BackgroundColor3 = color
+		crosshairDot.BackgroundColor3 = color
 	else
 		crosshairHorizontal.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
 		crosshairVertical.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
@@ -250,18 +191,8 @@ RunService.RenderStepped:Connect(function()
 	end
 end)
 
-gameEvent.OnClientEvent:Connect(function(eventType: unknown, first: unknown, second: unknown)
-	if eventType == "Possession" then
-		if first == player.UserId then
-			showStatus("YOU HAVE THE BALL", Color3.fromRGB(188, 255, 170), 1.5)
-		elseif typeof(second) == "string" then
-			showStatus(second .. " HAS POSSESSION", Color3.fromRGB(215, 228, 245), 1.5)
-		end
-	elseif eventType == "Feedback" and typeof(first) == "string" then
-		showStatus(first, Color3.fromRGB(255, 225, 126), 1.2)
-	elseif eventType == "Tackle" and first == player.UserId then
-		showStatus("TACKLE WON!", Color3.fromRGB(188, 255, 170), 1.2)
-	elseif eventType == "Reset" then
-		showStatus("BALL RESET TO CENTRE", Color3.fromRGB(210, 235, 255), 1.5)
+gameEvent.OnClientEvent:Connect(function(eventType: unknown, first: unknown)
+	if eventType == "Slide" and first == player.UserId then
+		playLocalSlidePose()
 	end
 end)

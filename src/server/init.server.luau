@@ -520,6 +520,11 @@ local function slideTackle(player: Player, requestedDirection: unknown)
 	if not character or not humanoid or not root or resetting then
 		return
 	end
+	-- Ball holders must release with a shot or pass before attempting a tackle.
+	if holder == player then
+		gameEvent:FireClient(player, "Feedback", "PASS OR SHOOT BEFORE TACKLING")
+		return
+	end
 
 	local now = os.clock()
 	if now - (lastTackle[player] or 0) < Config.Tackle.Cooldown then
@@ -534,10 +539,11 @@ local function slideTackle(player: Player, requestedDirection: unknown)
 		return
 	end
 
-	-- A brief low, controlled slide. No vertical force is applied, avoiding unpredictable launches.
+	-- A brief low, controlled slide. It has no vertical force, while a gyro and the
+	-- local Motor6D pose make the character visibly lean into the ground-level tackle.
 	local oldHipHeight = humanoid.HipHeight
 	local oldAutoRotate = humanoid.AutoRotate
-	humanoid.HipHeight = math.max(0, oldHipHeight - 0.85)
+	humanoid.HipHeight = math.max(0.15, oldHipHeight - 1.05)
 	humanoid.AutoRotate = false
 	local slideVelocity = Instance.new("BodyVelocity")
 	slideVelocity.Name = "TackleSlide"
@@ -546,9 +552,21 @@ local function slideTackle(player: Player, requestedDirection: unknown)
 	slideVelocity.Velocity = direction * Config.Tackle.SlideSpeed
 	slideVelocity.Parent = root
 
+	local slideGyro = Instance.new("BodyGyro")
+	slideGyro.Name = "TackleLean"
+	slideGyro.MaxTorque = Vector3.new(50000, 50000, 50000)
+	slideGyro.P = 3800
+	slideGyro.D = 350
+	slideGyro.CFrame = CFrame.lookAt(root.Position, root.Position + direction) * CFrame.Angles(math.rad(-42), 0, 0)
+	slideGyro.Parent = root
+	gameEvent:FireAllClients("Slide", player.UserId)
+
 	task.delay(Config.Tackle.SlideDuration, function()
 		if slideVelocity.Parent then
 			slideVelocity:Destroy()
+		end
+		if slideGyro.Parent then
+			slideGyro:Destroy()
 		end
 		if humanoid.Parent then
 			humanoid.HipHeight = oldHipHeight
@@ -606,15 +624,9 @@ RunService.Heartbeat:Connect(function(deltaTime)
 			local followAlpha = 1 - math.exp(-deltaTime * (Config.Ball.DribbleResponsiveness / 2))
 			dribbleSpin += humanoid.MoveDirection.Magnitude * deltaTime * 7
 			local targetCFrame = CFrame.new(target) * CFrame.Angles(dribbleSpin, math.atan2(-direction.X, -direction.Z), 0)
-			local fromPlayer = horizontalDirection(ball.Position - root.Position)
-			local separation = Vector3.new(ball.Position.X - root.Position.X, 0, ball.Position.Z - root.Position.Z).Magnitude
-			-- If a sharp turn leaves the eased ball behind/inside the avatar, snap only
-			-- that correction; normal running remains smoothly interpolated.
-			if not fromPlayer or separation < Config.Ball.DribbleDistance * 0.62 or fromPlayer:Dot(direction) < 0.42 then
-				ball.CFrame = targetCFrame
-			else
-				ball.CFrame = current:Lerp(targetCFrame, followAlpha)
-			end
+			-- Smoothly ease to the always-forward target. No snap correction is used here,
+			-- avoiding the jitter/teleport effect during fast turns.
+			ball.CFrame = current:Lerp(targetCFrame, followAlpha)
 			ball.AssemblyLinearVelocity = Vector3.zero
 			ball.AssemblyAngularVelocity = Vector3.zero
 		end

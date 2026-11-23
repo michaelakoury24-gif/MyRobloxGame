@@ -83,7 +83,8 @@ stadium.Parent = Workspace
 -- has a problem, players still have a floor instead of falling into the void.
 local oldBaseplate = Workspace:FindFirstChild("Baseplate")
 
-Workspace.FallenPartsDestroyHeight = -100
+-- FallenPartsDestroyHeight is Studio-capability protected in this project context.
+-- The pitch has its own ball-reset check below, so do not set that Workspace property here.
 Lighting.ClockTime = 15.2
 Lighting.Brightness = 2.5
 Lighting.Ambient = Color3.fromRGB(100, 110, 125)

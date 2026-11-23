@@ -5,7 +5,7 @@ local Config = {
 	Ball = {
 		Radius = 1.1,
 		ControlRange = 8,
-		DribbleDistance = 2.75,
+		DribbleDistance = 3.35,
 		DribbleHeightOffset = -1.48,
 		DribbleResponsiveness = 34,
 		FreeFriction = 0.985,
@@ -22,12 +22,13 @@ local Config = {
 		MaxSpeed = 104,
 		MinLift = 5,
 		MaxLift = 22,
+		AimLiftBoost = 24,
 		Cooldown = 0.22,
 	},
 
 	Pass = {
-		Speed = 42,
-		Lift = 1.8,
+		Speed = 62,
+		Lift = 1.4,
 		Cooldown = 0.16,
 	},
 

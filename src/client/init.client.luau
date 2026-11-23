@@ -52,7 +52,7 @@ local function createPanel(name: string, size: UDim2, position: UDim2, anchor: V
 	return panel
 end
 
-local controlsPanel = createPanel("ControlsPanel", UDim2.fromOffset(335, 136), UDim2.new(0, 22, 1, -22), Vector2.new(0, 1))
+local controlsPanel = createPanel("ControlsPanel", UDim2.fromOffset(335, 158), UDim2.new(0, 22, 1, -22), Vector2.new(0, 1))
 local controlsTitle = make("TextLabel", {
 	BackgroundTransparency = 1,
 	Position = UDim2.fromOffset(16, 12),
@@ -70,7 +70,7 @@ local controlsText = make("TextLabel", {
 	Position = UDim2.fromOffset(16, 39),
 	Size = UDim2.new(1, -32, 1, -48),
 	Font = Enum.Font.GothamMedium,
-	Text = "Touch the ball to dribble\nHold CLICK or F  Charge shot\nQ  Ground pass\nE  Slide tackle\nMobile: use the on-screen buttons",
+	Text = "Touch the ball to dribble\nHold CLICK or F  Charge shot\nAim higher with the centre crosshair for lift\nQ  Fast ground pass     E  Slide tackle\nMobile: use the on-screen buttons",
 	TextColor3 = Color3.fromRGB(240, 245, 252),
 	TextSize = 14,
 	TextXAlignment = Enum.TextXAlignment.Left,
@@ -90,6 +90,39 @@ local statusText = make("TextLabel", {
 	TextWrapped = true,
 }) :: TextLabel
 statusText.Parent = statusPanel
+
+-- Screen-centre crosshair: camera direction through this point determines the shot arc.
+local crosshair = make("Frame", {
+	Name = "ShotCrosshair",
+	AnchorPoint = Vector2.new(0.5, 0.5),
+	BackgroundTransparency = 1,
+	Position = UDim2.fromScale(0.5, 0.5),
+	Size = UDim2.fromOffset(30, 30),
+}) :: Frame
+crosshair.Parent = gui
+local crosshairHorizontal = make("Frame", {
+	BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+	BorderSizePixel = 0,
+	Position = UDim2.fromOffset(2, 14),
+	Size = UDim2.fromOffset(26, 2),
+}) :: Frame
+crosshairHorizontal.Parent = crosshair
+local crosshairVertical = make("Frame", {
+	BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+	BorderSizePixel = 0,
+	Position = UDim2.fromOffset(14, 2),
+	Size = UDim2.fromOffset(2, 26),
+}) :: Frame
+crosshairVertical.Parent = crosshair
+local crosshairDot = make("Frame", {
+	BackgroundColor3 = Color3.fromRGB(255, 214, 93),
+	BorderSizePixel = 0,
+	Position = UDim2.fromOffset(12, 12),
+	Size = UDim2.fromOffset(6, 6),
+}) :: Frame
+crosshairDot.Parent = crosshair
+local crosshairCorner = make("UICorner", { CornerRadius = UDim.new(1, 0) })
+crosshairCorner.Parent = crosshairDot
 
 local chargePanel = createPanel("ChargePanel", UDim2.fromOffset(280, 42), UDim2.new(0.5, 0, 1, -96), Vector2.new(0.5, 1))
 chargePanel.Visible = false
@@ -136,20 +169,18 @@ end
 local function aimDirection(): Vector3
 	local camera = Workspace.CurrentCamera
 	if camera then
+		-- The screen-centre crosshair follows this camera vector. Preserve its vertical
+		-- component so looking higher produces a higher charged shot on the server.
 		local look = camera.CFrame.LookVector
-		local flat = Vector3.new(look.X, 0, look.Z)
-		if flat.Magnitude > 0.05 then
-			return flat.Unit
+		if look.Magnitude > 0.05 then
+			return look.Unit
 		end
 	end
 
 	local character = player.Character
 	local root = character and character:FindFirstChild("HumanoidRootPart")
 	if root and root:IsA("BasePart") then
-		local flat = Vector3.new(root.CFrame.LookVector.X, 0, root.CFrame.LookVector.Z)
-		if flat.Magnitude > 0.05 then
-			return flat.Unit
-		end
+		return root.CFrame.LookVector
 	end
 	return Vector3.new(0, 0, -1)
 end
@@ -208,6 +239,14 @@ RunService.RenderStepped:Connect(function()
 		local amount = math.clamp((os.clock() - chargeStartedAt) / Config.Shot.MaxChargeTime, 0, 1)
 		chargeFill.Size = UDim2.fromScale(amount, 1)
 		chargeLabel.Text = string.format("SHOT POWER  %d%%", math.floor(amount * 100))
+		local chargeColor = Color3.fromRGB(255, math.floor(220 - amount * 120), 72)
+		crosshairHorizontal.BackgroundColor3 = chargeColor
+		crosshairVertical.BackgroundColor3 = chargeColor
+		crosshairDot.BackgroundColor3 = chargeColor
+	else
+		crosshairHorizontal.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+		crosshairVertical.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+		crosshairDot.BackgroundColor3 = Color3.fromRGB(255, 214, 93)
 	end
 end)
 

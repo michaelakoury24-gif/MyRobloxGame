@@ -292,20 +292,26 @@ ball.Parent = stadium
 
 -- Dark panels closely match the black-and-white football reference while remaining
 -- fully procedural (no external Roblox asset upload is required).
-local panelOffsets = {
-	Vector3.new(0, 0, -1.02),
-	Vector3.new(0.9, 0.22, -0.4),
-	Vector3.new(-0.9, 0.22, -0.4),
-	Vector3.new(0.56, -0.72, 0.5),
-	Vector3.new(-0.56, -0.72, 0.5),
-	Vector3.new(0, 0.87, 0.55),
+local panelNormals = {
+	Vector3.new(0, 0, -1),
+	Vector3.new(0.82, 0.18, -0.54),
+	Vector3.new(-0.82, 0.18, -0.54),
+	Vector3.new(0.58, -0.68, 0.45),
+	Vector3.new(-0.58, -0.68, 0.45),
+	Vector3.new(0, 0.88, 0.48),
+	Vector3.new(0.78, 0.38, 0.5),
+	Vector3.new(-0.78, 0.38, 0.5),
 }
-for index, offset in ipairs(panelOffsets) do
+for index, normal in ipairs(panelNormals) do
 	local panel = Instance.new("Part")
 	panel.Name = "FootballPanel" .. index
-	panel.Shape = Enum.PartType.Ball
-	panel.Size = Vector3.new(0.5, 0.5, 0.5)
-	panel.Position = ball.Position + offset
+	panel.Shape = Enum.PartType.Cylinder
+	-- Thin dark discs read more like the classic black polygon panels than small black balls.
+	panel.Size = Vector3.new(0.12, 0.58, 0.58)
+	local surfaceNormal = normal.Unit
+	local referenceUp = if math.abs(surfaceNormal:Dot(Vector3.yAxis)) > 0.9 then Vector3.new(0, 0, 1) else Vector3.yAxis
+	local panelUp = (referenceUp - surfaceNormal * referenceUp:Dot(surfaceNormal)).Unit
+	panel.CFrame = CFrame.fromMatrix(ball.Position + surfaceNormal * 1.07, surfaceNormal, panelUp)
 	panel.Anchored = false
 	panel.CanCollide = false
 	panel.CanTouch = false
@@ -389,11 +395,10 @@ local function releaseBall()
 end
 
 local function getDribbleTarget(root: BasePart, humanoid: Humanoid): (Vector3, Vector3)
-	local movement = horizontalDirection(humanoid.MoveDirection)
-	local facing = horizontalDirection(root.CFrame.LookVector) or Vector3.new(0, 0, -1)
-	local direction = movement or facing
-	-- A modest extra lead while running makes turns responsive without a weld or a rigid constraint.
-	local lead = Config.Ball.DribbleDistance + math.min(humanoid.MoveDirection.Magnitude * 0.35, 0.35)
+	-- Always use the avatar's facing direction so the ball cannot drift into or beside
+	-- the player when strafing. Movement only increases the lead slightly while running.
+	local direction = horizontalDirection(root.CFrame.LookVector) or Vector3.new(0, 0, -1)
+	local lead = Config.Ball.DribbleDistance + math.min(humanoid.MoveDirection.Magnitude * 0.3, 0.3)
 	local target = root.Position + direction * lead
 
 	-- Use the actual grass surface below the player so the ball stays at foot height
@@ -485,8 +490,8 @@ local function kickBall(player: Player, kind: "Shoot" | "Pass", requestedDirecti
 	end
 	lastAction[player] = now
 
-	local direction = if typeof(requestedDirection) == "Vector3" then horizontalDirection(requestedDirection) else nil
-	direction = direction or horizontalDirection(root.CFrame.LookVector)
+	local requestedAim = if typeof(requestedDirection) == "Vector3" then requestedDirection else nil
+	local direction = horizontalDirection(requestedAim) or horizontalDirection(root.CFrame.LookVector)
 	if not direction then
 		return
 	end
@@ -495,7 +500,11 @@ local function kickBall(player: Player, kind: "Shoot" | "Pass", requestedDirecti
 	if kind == "Shoot" then
 		local charge = if typeof(requestedCharge) == "number" then math.clamp(requestedCharge, 0, 1) else 0
 		local speed = Config.Shot.MinSpeed + (Config.Shot.MaxSpeed - Config.Shot.MinSpeed) * charge
-		local lift = Config.Shot.MinLift + (Config.Shot.MaxLift - Config.Shot.MinLift) * charge
+		local baseLift = Config.Shot.MinLift + (Config.Shot.MaxLift - Config.Shot.MinLift) * charge
+		-- The client sends the camera/crosshair look vector. Looking above the horizon
+		-- adds vertical lift, so raising the centre crosshair produces a higher shot.
+		local aimUp = if requestedAim then math.clamp(requestedAim.Y, 0, 0.8) else 0
+		local lift = baseLift + aimUp * Config.Shot.AimLiftBoost
 		velocity = direction * speed + Vector3.new(0, lift, 0)
 	else
 		velocity = direction * Config.Pass.Speed + Vector3.new(0, Config.Pass.Lift, 0)
@@ -597,7 +606,15 @@ RunService.Heartbeat:Connect(function(deltaTime)
 			local followAlpha = 1 - math.exp(-deltaTime * (Config.Ball.DribbleResponsiveness / 2))
 			dribbleSpin += humanoid.MoveDirection.Magnitude * deltaTime * 7
 			local targetCFrame = CFrame.new(target) * CFrame.Angles(dribbleSpin, math.atan2(-direction.X, -direction.Z), 0)
-			ball.CFrame = current:Lerp(targetCFrame, followAlpha)
+			local fromPlayer = horizontalDirection(ball.Position - root.Position)
+			local separation = Vector3.new(ball.Position.X - root.Position.X, 0, ball.Position.Z - root.Position.Z).Magnitude
+			-- If a sharp turn leaves the eased ball behind/inside the avatar, snap only
+			-- that correction; normal running remains smoothly interpolated.
+			if not fromPlayer or separation < Config.Ball.DribbleDistance * 0.62 or fromPlayer:Dot(direction) < 0.42 then
+				ball.CFrame = targetCFrame
+			else
+				ball.CFrame = current:Lerp(targetCFrame, followAlpha)
+			end
 			ball.AssemblyLinearVelocity = Vector3.zero
 			ball.AssemblyAngularVelocity = Vector3.zero
 		end

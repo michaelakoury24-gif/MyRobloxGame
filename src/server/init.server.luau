@@ -23,6 +23,15 @@ end
 
 terrain:Clear()
 
+-- Enable Roblox's natural grass decoration and make the ocean a richer blue.
+pcall(function()
+	terrain.Decoration = true
+	terrain.WaterColor = Color3.fromRGB(20, 155, 220)
+	terrain.WaterTransparency = 0.25
+	terrain.WaterWaveSize = 0.25
+	terrain.WaterWaveSpeed = 10
+end)
+
 -- Bright, stylised daytime lighting for the island landscape.
 pcall(function()
 	Lighting.ClockTime = 13.5
@@ -52,13 +61,13 @@ for x = -islandRadius, islandRadius, cellSize do
 		local distance = math.sqrt(x * x + z * z)
 		if distance < islandRadius then
 			local edge = 1 - distance / islandRadius
-			local noise = math.noise(x * 0.025, z * 0.025) * 4
-			local height = 5 + edge * 18 + noise
+			local noise = math.noise(x * 0.024, z * 0.024) * 7
+			local height = 8 + edge * 30 + noise
 
-			-- Keep the central area gentle enough to play on, with higher land toward the rim.
-			local valley = math.exp(-((x / 78) ^ 2 + ((z - 20) / 68) ^ 2))
-			height -= valley * 12
-			height = math.max(height, 2)
+			-- Keep a grassy central valley, but push the rim upward into mountain foothills.
+			local valley = math.exp(-((x / 82) ^ 2 + ((z - 24) / 72) ^ 2))
+			height -= valley * 23
+			height = math.max(height, 3)
 
 			fillBlock(
 				Vector3.new(x, height / 2 - 12, z),
@@ -74,22 +83,25 @@ for x = -islandRadius, islandRadius, cellSize do
 	end
 end
 
--- Three large cliff formations shape the valley without adding buildings or props.
-local cliffs = {
-	{ Vector3.new(-88, 18, -112), 62 },
-	{ Vector3.new(12, 25, -145), 72 },
-	{ Vector3.new(106, 15, -96), 58 },
+-- High rock-and-grass mountains surround the valley. Grass caps the upper slopes while
+-- the exposed rock lower down gives each mountain a strong silhouette.
+local mountains = {
+	{ Vector3.new(-118, 24, -112), 82 },
+	{ Vector3.new(-22, 30, -156), 92 },
+	{ Vector3.new(94, 22, -121), 78 },
+	{ Vector3.new(142, 15, -18), 64 },
+	{ Vector3.new(-150, 15, -12), 62 },
 }
-for _, cliff in cliffs do
-	local position = cliff[1] :: Vector3
-	local radius = cliff[2] :: number
+for _, mountain in mountains do
+	local position = mountain[1] :: Vector3
+	local radius = mountain[2] :: number
 	fillBall(position, radius, Enum.Material.Rock)
-	fillBall(position + Vector3.new(0, radius * 0.58, 0), radius * 0.58, Enum.Material.Grass)
+	fillBall(position + Vector3.new(0, radius * 0.54, 0), radius * 0.64, Enum.Material.Grass)
 end
 
--- Terrain-water waterfall flowing down the central rear cliff into the valley stream.
-fillBlock(Vector3.new(12, 43, -145), Vector3.new(22, 68, 4), Enum.Material.Water)
-fillBlock(Vector3.new(12, 4, -75), Vector3.new(14, 5, 145), Enum.Material.Water)
+-- Terrain-water waterfall flowing from the tallest rear mountain into the valley stream.
+fillBlock(Vector3.new(-22, 55, -156), Vector3.new(25, 112, 5), Enum.Material.Water)
+fillBlock(Vector3.new(-12, 5, -77), Vector3.new(16, 6, 160), Enum.Material.Water)
 
 -- A few terrain-only floating islands echo the distant sky islands in the reference.
 local floatingIslands = {

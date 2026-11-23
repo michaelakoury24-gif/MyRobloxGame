@@ -1,6 +1,7 @@
 --!strict
 -- Builds a self-contained football stadium map with stands and a player-proof perimeter barrier.
 
+local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
@@ -255,12 +256,13 @@ createPart("EastBarrier", Vector3.new(2, barrierHeight, barrierHalfZ * 2), CFram
 createPart("NorthBarrier", Vector3.new(barrierHalfX * 2, barrierHeight, 2), CFrame.new(0, barrierY, -barrierHalfZ), barrierColor, Enum.Material.Glass, true, 0.48)
 createPart("SouthBarrier", Vector3.new(barrierHalfX * 2, barrierHeight, 2), CFrame.new(0, barrierY, barrierHalfZ), barrierColor, Enum.Material.Glass, true, 0.48)
 
--- A real physics football sits at midfield and can be pushed around by players.
+-- Small black-and-white football. It uses a light physical profile when free, then
+-- becomes a controlled dribble ball that follows the player who first touches it.
 local ball = Instance.new("Part")
 ball.Name = "Football"
 ball.Shape = Enum.PartType.Ball
-ball.Size = Vector3.new(4, 4, 4)
-ball.Position = Vector3.new(0, 3.2, 0)
+ball.Size = Vector3.new(2.2, 2.2, 2.2)
+ball.Position = Vector3.new(0, 2.2, 0)
 ball.Anchored = false
 ball.CanCollide = true
 ball.CanTouch = true
@@ -268,16 +270,138 @@ ball.CanQuery = true
 ball.CastShadow = true
 ball.Color = Color3.fromRGB(248, 248, 242)
 ball.Material = Enum.Material.SmoothPlastic
-ball.CustomPhysicalProperties = PhysicalProperties.new(0.7, 0.38, 0.52, 1, 1)
+ball.CustomPhysicalProperties = PhysicalProperties.new(0.45, 0.24, 0.45, 1, 1)
 ball.Parent = stadium
+
+-- Attached black panels make the ball read as a football instead of a plain white sphere.
+local panelOffsets = {
+	Vector3.new(0, 0, -1.03),
+	Vector3.new(0.91, 0.22, -0.42),
+	Vector3.new(-0.91, 0.22, -0.42),
+	Vector3.new(0.58, -0.73, 0.48),
+	Vector3.new(-0.58, -0.73, 0.48),
+	Vector3.new(0, 0.89, 0.54),
+}
+for index, offset in ipairs(panelOffsets) do
+	local panel = Instance.new("Part")
+	panel.Name = "FootballPanel" .. index
+	panel.Shape = Enum.PartType.Ball
+	panel.Size = Vector3.new(0.48, 0.48, 0.48)
+	panel.Position = ball.Position + offset
+	panel.Anchored = false
+	panel.CanCollide = false
+	panel.CanTouch = false
+	panel.CanQuery = false
+	panel.Massless = true
+	panel.Color = Color3.fromRGB(25, 29, 36)
+	panel.Material = Enum.Material.SmoothPlastic
+	panel.Parent = stadium
+
+	local weld = Instance.new("WeldConstraint")
+	weld.Part0 = ball
+	weld.Part1 = panel
+	weld.Parent = panel
+end
 
 local ballGlow = Instance.new("Highlight")
 ballGlow.Name = "BallOutline"
 ballGlow.Adornee = ball
 ballGlow.FillTransparency = 1
-ballGlow.OutlineColor = Color3.fromRGB(34, 40, 52)
-ballGlow.OutlineTransparency = 0.2
+ballGlow.OutlineColor = Color3.fromRGB(20, 24, 31)
+ballGlow.OutlineTransparency = 0.1
 ballGlow.Parent = ball
+
+local ballAttachment = Instance.new("Attachment")
+ballAttachment.Name = "DribbleAttachment"
+ballAttachment.Parent = ball
+
+local holder: Player? = nil
+local holderAttachment: Attachment? = nil
+local followConstraint: AlignPosition? = nil
+
+local function releaseBall()
+	if not holder then
+		return
+	end
+
+	if followConstraint then
+		followConstraint:Destroy()
+		followConstraint = nil
+	end
+	if holderAttachment then
+		holderAttachment:Destroy()
+		holderAttachment = nil
+	end
+
+	ball.CanCollide = true
+	ball.AssemblyLinearVelocity = Vector3.zero
+	holder = nil
+	pcall(function()
+		ball:SetNetworkOwner(nil)
+	end)
+end
+
+local function startDribbling(player: Player, character: Model)
+	if holder then
+		return
+	end
+
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	local root = character:FindFirstChild("HumanoidRootPart")
+	if not humanoid or humanoid.Health <= 0 or not root or not root:IsA("BasePart") then
+		return
+	end
+
+	holder = player
+	ball.CanCollide = false
+	-- Put the smaller ball just in front of the player's feet before the constraint takes over.
+	ball.CFrame = root.CFrame * CFrame.new(0, -1.45, -2.65)
+	ball.AssemblyLinearVelocity = Vector3.zero
+	ball.AssemblyAngularVelocity = Vector3.zero
+
+	holderAttachment = Instance.new("Attachment")
+	holderAttachment.Name = "FootballDribbleTarget"
+	holderAttachment.Position = Vector3.new(0, -1.45, -2.65)
+	holderAttachment.Parent = root
+
+	followConstraint = Instance.new("AlignPosition")
+	followConstraint.Name = "FootballDribbleFollow"
+	followConstraint.Attachment0 = ballAttachment
+	followConstraint.Attachment1 = holderAttachment
+	followConstraint.Mode = Enum.PositionAlignmentMode.TwoAttachment
+	followConstraint.ApplyAtCenterOfMass = true
+	followConstraint.MaxForce = 70000
+	followConstraint.MaxVelocity = 90
+	followConstraint.Responsiveness = 120
+	followConstraint.RigidityEnabled = false
+	followConstraint.Parent = ball
+
+	pcall(function()
+		ball:SetNetworkOwner(nil)
+	end)
+
+	humanoid.Died:Once(releaseBall)
+end
+
+ball.Touched:Connect(function(otherPart: BasePart)
+	if holder then
+		return
+	end
+	local character = otherPart:FindFirstAncestorOfClass("Model")
+	if not character then
+		return
+	end
+	local player = Players:GetPlayerFromCharacter(character)
+	if player then
+		startDribbling(player, character)
+	end
+end)
+
+Players.PlayerRemoving:Connect(function(player)
+	if player == holder then
+		releaseBall()
+	end
+end)
 
 pcall(function()
 	ball:SetNetworkOwner(nil)

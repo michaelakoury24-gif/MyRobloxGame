@@ -56,9 +56,6 @@ local function createPart(
 		Anchored = true,
 		CanCollide = canCollide,
 		CanTouch = false,
-		-- Roblox does not allow a collidable part to have CanQuery disabled.
-		-- Keeping collision surfaces queryable also prevents the stadium build from stopping early.
-		CanQuery = canCollide,
 		CastShadow = false,
 		Color = color,
 		Material = material,
@@ -67,6 +64,9 @@ local function createPart(
 		TopSurface = Enum.SurfaceType.Smooth,
 		BottomSurface = Enum.SurfaceType.Smooth,
 	}) :: Part
+	-- Set CanQuery after CanCollide. Setting these together in an unordered property
+	-- table can make Roblox reject a non-collidable line before CanCollide is applied.
+	part.CanQuery = canCollide
 	part.Parent = parent
 	return part
 end

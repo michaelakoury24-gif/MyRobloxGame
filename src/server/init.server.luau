@@ -56,7 +56,9 @@ local function createPart(
 		Anchored = true,
 		CanCollide = canCollide,
 		CanTouch = false,
-		CanQuery = false,
+		-- Roblox does not allow a collidable part to have CanQuery disabled.
+		-- Keeping collision surfaces queryable also prevents the stadium build from stopping early.
+		CanQuery = canCollide,
 		CastShadow = false,
 		Color = color,
 		Material = material,
@@ -77,10 +79,9 @@ stadium = Instance.new("Folder")
 stadium.Name = "FootballStadium"
 stadium.Parent = Workspace
 
+-- Keep the default baseplate until the pitch has been built below. If a later asset
+-- has a problem, players still have a floor instead of falling into the void.
 local oldBaseplate = Workspace:FindFirstChild("Baseplate")
-if oldBaseplate then
-	oldBaseplate:Destroy()
-end
 
 Workspace.FallenPartsDestroyHeight = -100
 Lighting.ClockTime = 15.2
@@ -122,6 +123,11 @@ for stripe = 0, math.ceil(FIELD_LENGTH / stripeWidth) - 1 do
 		Enum.Material.Grass,
 		true
 	)
+end
+
+-- The green pitch is now a safe, collidable floor, so the starter baseplate can go.
+if oldBaseplate then
+	oldBaseplate:Destroy()
 end
 
 local lines = Instance.new("Folder")

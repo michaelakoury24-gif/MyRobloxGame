@@ -14,6 +14,7 @@ for _, name in {
 	"FootballStadium",
 	"FootballRemotes",
 	"LandscapeSpawn",
+	"CartoonTerrain",
 } do
 	local object = Workspace:FindFirstChild(name) or game:GetService("ReplicatedStorage"):FindFirstChild(name)
 	if object then
@@ -46,10 +47,6 @@ local function fillBlock(position: Vector3, size: Vector3, material: Enum.Materi
 	terrain:FillBlock(CFrame.new(position), size, material)
 end
 
-local function fillBall(position: Vector3, radius: number, material: Enum.Material)
-	terrain:FillBall(position, radius, material)
-end
-
 -- A deep ocean surrounds the playable island. Land placed afterward cuts a natural coast into it.
 fillBlock(Vector3.new(0, -30, 0), Vector3.new(900, 60, 900), Enum.Material.Water)
 
@@ -62,13 +59,11 @@ for x = -islandRadius, islandRadius, cellSize do
 		local distance = math.sqrt(x * x + z * z)
 		if distance < islandRadius then
 			local edge = 1 - distance / islandRadius
-			local noise = math.noise(x * 0.011, z * 0.011) * 1.8
-			local height = 10 + (edge ^ 1.45) * 20 + noise
-
-			-- A wide, gentle valley stays clear for the player while the rim becomes soft foothills.
-			local valley = math.exp(-((x / 88) ^ 2 + ((z - 24) / 78) ^ 2))
-			height -= valley * 15
-			height = math.max(height, 4)
+			local noise = math.noise(x * 0.009, z * 0.009) * 0.7
+			-- Keep the base terrain intentionally low and even. Rounded smooth-plastic
+			-- mountains are layered above it below, avoiding the jagged terrain-rock walls.
+			local height = 7 + (edge ^ 1.6) * 8 + noise
+			height = math.max(height, 5)
 
 			fillBlock(
 				Vector3.new(x, height / 2 - 12, z),
@@ -84,39 +79,127 @@ for x = -islandRadius, islandRadius, cellSize do
 	end
 end
 
--- Rounded, layered mountains give the skyline a clean cartoon silhouette. Most of each
--- mountain is grass, with only a small rock skirt showing near the base.
-local mountains = {
-	{ Vector3.new(-118, 18, -112), 76 },
-	{ Vector3.new(-22, 24, -156), 86 },
-	{ Vector3.new(94, 18, -121), 72 },
-	{ Vector3.new(142, 12, -18), 58 },
-	{ Vector3.new(-150, 12, -12), 56 },
-}
-for _, mountain in mountains do
-	local position = mountain[1] :: Vector3
-	local radius = mountain[2] :: number
-	fillBall(position, radius, Enum.Material.Rock)
-	fillBall(position + Vector3.new(0, radius * 0.34, 0), radius * 0.82, Enum.Material.Grass)
-	fillBall(position + Vector3.new(0, radius * 0.94, 0), radius * 0.42, Enum.Material.Grass)
+-- Smooth-plastic landscape forms replace the noisy terrain-rock walls. Their rounded
+-- silhouettes and flat colours give the mountains a clean, balanced cartoon look.
+local cartoonTerrain = Instance.new("Folder")
+cartoonTerrain.Name = "CartoonTerrain"
+cartoonTerrain.Parent = Workspace
+
+local function createLandscapePart(
+	name: string,
+	position: Vector3,
+	size: Vector3,
+	color: Color3,
+	material: Enum.Material,
+	shape: Enum.PartType?,
+	canCollide: boolean,
+	transparency: number?
+): Part
+	local part = Instance.new("Part")
+	part.Name = name
+	part.Anchored = true
+	part.CanCollide = canCollide
+	part.CanTouch = false
+	if not canCollide then
+		part.CanQuery = false
+	end
+	part.CastShadow = true
+	part.Color = color
+	part.Material = material
+	part.Size = size
+	part.Position = position
+	part.Transparency = transparency or 0
+	if shape then
+		part.Shape = shape
+	end
+	part.Parent = cartoonTerrain
+	return part
 end
 
--- Terrain-water waterfall flowing from the tallest rear mountain into the valley stream.
-fillBlock(Vector3.new(-22, 52, -156), Vector3.new(23, 104, 5), Enum.Material.Water)
-fillBlock(Vector3.new(-12, 5, -77), Vector3.new(16, 6, 160), Enum.Material.Water)
-
--- A few terrain-only floating islands echo the distant sky islands in the reference.
-local floatingIslands = {
-	{ Vector3.new(-175, 112, -120), 21 },
-	{ Vector3.new(156, 128, -80), 25 },
-	{ Vector3.new(-112, 145, 132), 17 },
-	{ Vector3.new(138, 106, 126), 19 },
+local grassColours = {
+	Color3.fromRGB(91, 190, 82),
+	Color3.fromRGB(104, 204, 91),
+	Color3.fromRGB(78, 177, 76),
 }
-for _, island in floatingIslands do
+local rockColour = Color3.fromRGB(74, 103, 119)
+
+local function createCartoonMountain(index: number, position: Vector3, size: Vector3)
+	-- A low smooth rock skirt grounds the mountain without the sharp Terrain rock texture.
+	createLandscapePart(
+		"MountainRock" .. index,
+		position + Vector3.new(0, size.Y * 0.25, 0),
+		Vector3.new(size.X, size.Y * 0.62, size.Z),
+		rockColour,
+		Enum.Material.SmoothPlastic,
+		Enum.PartType.Ball,
+		true
+	)
+	-- Two overlapping green forms make a soft, rounded grassy mountain instead of a rough cliff.
+	createLandscapePart(
+		"MountainGrass" .. index,
+		position + Vector3.new(0, size.Y * 0.53, 0),
+		Vector3.new(size.X * 0.96, size.Y * 0.66, size.Z * 0.96),
+		grassColours[((index - 1) % #grassColours) + 1],
+		Enum.Material.SmoothPlastic,
+		Enum.PartType.Ball,
+		true
+	)
+	createLandscapePart(
+		"MountainTop" .. index,
+		position + Vector3.new(0, size.Y * 0.88, 0),
+		Vector3.new(size.X * 0.57, size.Y * 0.42, size.Z * 0.57),
+		grassColours[((index + 1) % #grassColours) + 1],
+		Enum.Material.SmoothPlastic,
+		Enum.PartType.Ball,
+		true
+	)
+end
+
+-- A balanced ring leaves a broad open valley in the middle instead of enclosing the player in walls.
+local mountains = {
+	{ Vector3.new(-126, 4, -110), Vector3.new(132, 92, 108) },
+	{ Vector3.new(-24, 4, -162), Vector3.new(158, 112, 98) },
+	{ Vector3.new(94, 4, -116), Vector3.new(132, 92, 108) },
+	{ Vector3.new(-160, 4, -2), Vector3.new(98, 70, 94) },
+	{ Vector3.new(160, 4, -2), Vector3.new(98, 70, 94) },
+}
+for index, mountain in mountains do
+	createCartoonMountain(index, mountain[1] :: Vector3, mountain[2] :: Vector3)
+end
+
+-- A clean translucent waterfall and stream retain the terrain-only landscape focus.
+createLandscapePart(
+	"Waterfall",
+	Vector3.new(-24, 51, -166),
+	Vector3.new(20, 96, 2),
+	Color3.fromRGB(93, 214, 255),
+	Enum.Material.Glass,
+	nil,
+	false,
+	0.2
+)
+fillBlock(Vector3.new(-18, 5, -82), Vector3.new(14, 6, 160), Enum.Material.Water)
+
+-- Small smooth floating landforms keep the distant reference-inspired silhouette uncluttered.
+local floatingIslands = {
+	{ Vector3.new(-175, 112, -120), Vector3.new(40, 24, 34) },
+	{ Vector3.new(156, 128, -80), Vector3.new(46, 28, 38) },
+	{ Vector3.new(-112, 145, 132), Vector3.new(34, 21, 29) },
+	{ Vector3.new(138, 106, 126), Vector3.new(38, 23, 32) },
+}
+for index, island in floatingIslands do
 	local position = island[1] :: Vector3
-	local radius = island[2] :: number
-	fillBall(position, radius, Enum.Material.Rock)
-	fillBall(position + Vector3.new(0, radius * 0.5, 0), radius * 0.58, Enum.Material.Grass)
+	local size = island[2] :: Vector3
+	createLandscapePart("FloatingRock" .. index, position, size, rockColour, Enum.Material.SmoothPlastic, Enum.PartType.Ball, false)
+	createLandscapePart(
+		"FloatingGrass" .. index,
+		position + Vector3.new(0, size.Y * 0.3, 0),
+		Vector3.new(size.X * 0.82, size.Y * 0.6, size.Z * 0.82),
+		grassColours[((index + 1) % #grassColours) + 1],
+		Enum.Material.SmoothPlastic,
+		Enum.PartType.Ball,
+		false
+	)
 end
 
 -- An invisible spawn marker keeps players safely above the central valley terrain.
